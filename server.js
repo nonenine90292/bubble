@@ -8,7 +8,7 @@ app.use(express.static("public"));
 
 // Ruta principal
 app.get("/", (req, res) => {
-  res.sendFile(__dirname + "/public/webjs.html");
+  res.sendFile(__dirname + "/public/index.html");
 });
 
 app.listen(PORT, () => {
