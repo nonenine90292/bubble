@@ -981,6 +981,11 @@
 <audio id="gameMusic" src="sounds/musica.mp3" loop></audio>
 
 <script>
+/* ------------------------- Inicialización Global ------------------------- */
+let servers = [];  // MOVIDO AL TOP
+let favorites = JSON.parse(localStorage.getItem('favorites_v1')) || [];
+let currentServerId = null;
+
 /* ------------------------- Estado persistente ------------------------- */
 const LS_KEY = 'bubbleao_state_vfinal_v1';
 let state = {
@@ -994,19 +999,38 @@ try { const s = localStorage.getItem(LS_KEY); if(s) state = JSON.parse(s); } cat
 function persist(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 
 /* ------------------------- DOM refs ------------------------- */
-const openShopFromMenu = document.getElementById('openShopFromMenu'), shopOverlay = document.getElementById('shopOverlay');
-const closeShop = document.getElementById('closeShop'), pointsCounter = document.getElementById('pointsCounter');
-const topLeftControls = document.getElementById('topLeftControls'), nameInput = document.getElementById('nameInput');
-const uploadButton = document.getElementById('uploadButton'), fileInput = document.getElementById('fileInput');
-const hud = document.getElementById('hud'), hudText = document.getElementById('hudText'), openUploadBtn = document.getElementById('openUploadBtn'), openFlagBtn = document.getElementById('openFlagBtn');
-const openShopBtn = document.getElementById('openShopBtn'), chatContainer = document.getElementById('chatContainer'), chat = document.getElementById('chat'), chatInput = document.getElementById('chatInput');
-const modalBackdrop = document.getElementById('modalBackdrop'), uploadModal = document.getElementById('uploadModal'), modalFileInput = document.getElementById('modalFileInput');
-const modalCancel1 = document.getElementById('modalCancel1'), modalSubmitPhoto = document.getElementById('modalSubmitPhoto');
-const flagModal = document.getElementById('flagModal'), flagSelect = document.getElementById('flagSelect'), modalCancel2 = document.getElementById('modalCancel2'), modalSubmitFlag = document.getElementById('modalSubmitFlag');
-const loginSound = document.getElementById('loginSound'), gameMusic = document.getElementById('gameMusic');
-const canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
-const leaderboard = document.getElementById('leaderboard'), leaderboardList = document.getElementById('leaderboardList');
-const shopGrid = document.getElementById('shopGrid'), pointsDisplay = document.getElementById('pointsCounter');
+const shopOverlay = document.getElementById('shopOverlay');
+const closeShop = document.getElementById('closeShop');
+const pointsCounter = document.getElementById('pointsCounter');
+const topLeftControls = document.getElementById('topLeftControls');
+const nameInput = document.getElementById('nameInput');
+const uploadButton = document.getElementById('uploadButton');
+const fileInput = document.getElementById('fileInput');
+const hud = document.getElementById('hud');
+const hudText = document.getElementById('hudText');
+const openUploadBtn = document.getElementById('openUploadBtn');
+const openFlagBtn = document.getElementById('openFlagBtn');
+const openShopBtns = document.querySelectorAll('#openShopBtn');  // Múltiples
+const chatContainer = document.getElementById('chatContainer');
+const chat = document.getElementById('chat');
+const chatInput = document.getElementById('chatInput');
+const modalBackdrop = document.getElementById('modalBackdrop');
+const uploadModal = document.getElementById('uploadModal');
+const modalFileInput = document.getElementById('modalFileInput');
+const modalCancel1 = document.getElementById('modalCancel1');
+const modalSubmitPhoto = document.getElementById('modalSubmitPhoto');
+const flagModal = document.getElementById('flagModal');
+const flagSelect = document.getElementById('flagSelect');
+const modalCancel2 = document.getElementById('modalCancel2');
+const modalSubmitFlag = document.getElementById('modalSubmitFlag');
+const loginSound = document.getElementById('loginSound');
+const gameMusic = document.getElementById('gameMusic');
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const leaderboard = document.getElementById('leaderboard');
+const leaderboardList = document.getElementById('leaderboardList');
+const shopGrid = document.getElementById('shopGrid');
+const pointsDisplay = document.getElementById('pointsCounter');
 
 /* ------------------------- Socket.io connection ------------------------- */
 const socket = io();
@@ -1030,35 +1054,25 @@ function randomColor(){ return `hsl(${Math.random()*360},70%,55%)`; }
 const realNames = ["Carlos","María","José","Lucía","Diego","Sofía","Andrés","Valentina","Mateo","Camila","Daniel","Isabella","Javier","Alejandra","Luis","Victoria","Pedro","Gabriela","Mario","Natalia","Hugo","Laura","Fernando","Paula","Ricardo","Adriana","Sergio","Daniela","Pablo","Claudia","Emiliano","Irene","Tomás","Marta","Óscar","Alejandro","Mónica","Samuel","Rocío","Rubén","Enrique","Camilo","Julieta","Paola","Nicolas","Carla","Martín","Angela","Rafael"];
 function makeName(){ return realNames[Math.floor(Math.random()*realNames.length)] + "-" + Math.floor(Math.random()*9000); }
 
-function absorb(target, addedR) {
-  // Calcular masa agregada (el tamaño de lo comido)
-  const addMass = Math.PI * addedR * addedR;
+/* ------------------------- ABSORB CORREGIDO ------------------------- */
+function absorb(target, eatenRadius) {
+  const addedMass = Math.PI * eatenRadius * eatenRadius;
   const currentMass = Math.PI * target.radius * target.radius;
-  const newMass = currentMass + addMass;
+  const newMass = currentMass + addedMass;
+  target.radius = Math.sqrt(newMass / Math.PI);
 
-  // Radio nuevo que debería tener según su masa total
-  const newRadius = Math.sqrt(newMass / Math.PI);
+  if (target.radius > MAX_RADIUS) target.radius = MAX_RADIUS;
 
-  // Hacemos que el crecimiento se vea (suave pero notorio)
-  const growthSmooth = 30; // entre 0.3 y 0.6 es visualmente natural
-  target.radius += (newRadius - target.radius) * growthSmooth;
-
-  // Limitar al máximo definido
-  target.radius = Math.min(target.radius, MAX_RADIUS);
-
-  // Actualizar masa real
-  target.mass = Math.PI * target.radius * 30;
-
-  // Si el jugador es quien come, sumar puntos
-  if (target === player) {
-    const pointsGained = Math.floor(addedR * 2);
+  // si es el jugador, sumar puntos
+  if (target.id === player.id) {
+    const pointsGained = Math.floor(eatenRadius * 3);
     player.points += pointsGained;
     state.points = player.points;
     persist();
     updatePointsUI();
+    if (socket.connected && currentServerId) socket.emit('updatePlayer', {radius: target.radius, points: player.points});
   }
 }
-
 
 /* Player */
 let player = {
@@ -1073,7 +1087,6 @@ let miniBots = {}; // Object with id as key
 let foods = {}; // Object with id as key
 let moveDir = {x:0,y:0};
 let inputFocused = false;
-let currentServerId = null;
 
 /* load persisted images if src present */
 if(state.playerData.skinImg){ const i=new Image(); i.onload=()=>player.skinImage=i; i.src=state.playerData.skinImg; }
@@ -1105,13 +1118,13 @@ canvas.addEventListener('mousemove', e=>{
   if(inputFocused) return;
   let dx = e.clientX - canvas.width/2, dy = e.clientY - canvas.height/2, dist = Math.hypot(dx,dy)||1;
   moveDir.x = dx/dist; moveDir.y = dy/dist;
-  if(socket.connected) socket.emit('move', moveDir);
+  if(socket.connected && currentServerId) socket.emit('move', moveDir);
 });
 canvas.addEventListener('touchmove', e=>{
   if(inputFocused) return;
   const t = e.touches[0]; let dx = t.clientX - canvas.width/2, dy = t.clientY - canvas.height/2, dist = Math.hypot(dx,dy)||1;
   moveDir.x = dx/dist; moveDir.y = dy/dist;
-  if(socket.connected) socket.emit('move', moveDir);
+  if(socket.connected && currentServerId) socket.emit('move', moveDir);
 });
 chatInput.addEventListener('focus', ()=> inputFocused=true);
 chatInput.addEventListener('blur', ()=> inputFocused=false);
@@ -1122,18 +1135,18 @@ nameInput.addEventListener('blur', ()=> inputFocused=false);
 chatInput.addEventListener('keydown', e=>{
   if(e.key !== 'Enter') return;
   const text = chatInput.value.trim(); if(!text) return;
-  if(text.startsWith('/')) handleCommand(text); else { addMessage(player.name, text, false); socket.emit('chat', text); }
+  if(text.startsWith('/')) handleCommand(text); else { addMessage(player.name, text, false); if(socket.connected && currentServerId) socket.emit('chat', text); }
   chatInput.value = '';
 });
 function handleCommand(text){
   const parts = text.split(' '), cmd = parts[0].toLowerCase();
-  if(cmd === '/color'){ const c = parts[1] || '#'+Math.floor(Math.random()*16777215).toString(16); player.color = c; addMessage('Sistema', `Color cambiado a ${c}`, true); persist(); socket.emit('updatePlayer', {color: c}); }
-  else if(cmd === '/masa'){ const n = Number(parts[1]||0); if(isNaN(n)){ addMessage('Sistema','Número inválido', true); return; } absorb(player, Math.sqrt(n)); player.points += Math.floor(n/3); addMessage('Sistema', `Masa aumentada.`, true); persist(); socket.emit('updatePlayer', {radius: player.radius, points: player.points}); }
+  if(cmd === '/color'){ const c = parts[1] || '#'+Math.floor(Math.random()*16777215).toString(16); player.color = c; addMessage('Sistema', `Color cambiado a ${c}`, true); persist(); if(socket.connected && currentServerId) socket.emit('updatePlayer', {color: c}); }
+  else if(cmd === '/masa'){ const n = Number(parts[1]||0); if(isNaN(n)){ addMessage('Sistema','Número inválido', true); return; } absorb(player, Math.sqrt(n)); player.points += Math.floor(n/3); addMessage('Sistema', `Masa aumentada.`, true); persist(); if(socket.connected && currentServerId) socket.emit('updatePlayer', {radius: player.radius, points: player.points}); }
   else if(cmd === '/subirmasa'){ const name = parts.slice(1).join(' '); if(!name){ addMessage('Sistema','Uso: /subirmasa <nombre>', true); return; } const target = findByName(name); if(!target){ addMessage('Sistema','No encontrado', true); return; } const cost=50; if(player.points < cost){ addMessage('Sistema',`No tienes ${cost} pts`, true); return; } player.points -= cost; absorb(target, 12); addMessage('Sistema', `Subiste masa a ${target.name}`, true); persist(); }
-  else if(cmd === '/killall'){ bots=[]; miniBots=[]; addMessage('Sistema','Bots eliminados', true); }
+  else if(cmd === '/killall'){ bots={}; miniBots={}; addMessage('Sistema','Bots eliminados', true); }
   else if(cmd === '/menu'){ openShop(); }
-  else if(cmd === '/horas'){ const prev = parseInt(localStorage.getItem('bubbleao_play_seconds')||'0',10)||0; const session = Math.floor((Date.now() - player.sessionStart)/1000); const total = prev + session; const h = Math.floor(total/3600), m = Math.floor((total%3600)/60); addMessage('Sistema', `Has jugado ${h}h ${m}m.`, true); }
-  else if(cmd === '/puntos'){ const n = Number(parts[1]||0); if(isNaN(n)){ addMessage('Sistema','Número inválido', true); return; } player.points += Math.floor(n); addMessage('Sistema', `Añadidos ${Math.floor(n)} puntos.`, true); persist(); updatePointsUI(); socket.emit('updatePlayer', {points: player.points}); }
+  else if(cmd === '/horas'){ const prev = parseInt(localStorage.getItem('bubbleao_play_seconds')||'0',10)||0; const session = Math.floor((Date.now() - (player.sessionStart||Date.now()))/1000); const total = prev + session; const h = Math.floor(total/3600), m = Math.floor((total%3600)/60); addMessage('Sistema', `Has jugado ${h}h ${m}m.`, true); }
+  else if(cmd === '/puntos'){ const n = Number(parts[1]||0); if(isNaN(n)){ addMessage('Sistema','Número inválido', true); return; } player.points += Math.floor(n); addMessage('Sistema', `Añadidos ${Math.floor(n)} puntos.`, true); persist(); updatePointsUI(); if(socket.connected && currentServerId) socket.emit('updatePlayer', {points: player.points}); }
   else addMessage('Sistema','Comando desconocido', true);
 }
 
@@ -1146,25 +1159,6 @@ function findByName(name){
   return null;
 }
 
-/* ------------------------- ABSORB CORREGIDO (CRECIMIENTO FIABLE) ------------------------- */
-function absorb(target, eatenRadius) {
-  const addedMass = Math.PI * eatenRadius * eatenRadius;
-  const currentMass = Math.PI * target.radius * target.radius;
-  const newMass = currentMass + addedMass;
-  target.radius = Math.sqrt(newMass / Math.PI);
-
-  if (target.radius > MAX_RADIUS) target.radius = MAX_RADIUS;
-
-  // si es el jugador, sumar puntos
-  if (target.id === player.id) {
-    const pointsGained = Math.floor(eatenRadius * 3);
-    player.points += pointsGained;
-    state.points = player.points;
-    persist();
-    updatePointsUI();
-    socket.emit('updatePlayer', {radius: target.radius, points: player.points});
-  }
-}
 /* ------------------------- Rendering & camera ------------------------- */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -1256,11 +1250,11 @@ socket.on('servers', (serverList) => {
 });
 
 socket.on('state', (data) => {
-  players = data.players;
-  bots = data.bots;
-  miniBots = data.miniBots;
-  foods = data.foods;
-  player = players[socket.id] || player;
+  Object.assign(players, data.players || {});
+  Object.assign(bots, data.bots || {});
+  Object.assign(miniBots, data.miniBots || {});
+  Object.assign(foods, data.foods || {});
+  if (data.players[socket.id]) player = { ...player, ...data.players[socket.id] };
   updateLeaderboard({...players, ...bots, ...miniBots});
 });
 
@@ -1277,6 +1271,11 @@ socket.on('playerCountUpdate', (counts) => {
   renderList();
 });
 
+socket.on('joinAck', (serverId) => {
+  currentServerId = serverId;
+  console.log(`Joined server ${serverId}`);
+});
+
 /* ------------------------- Shop items & UI ------------------------- */
 const shopItems = [
   {id:'skinA', title:'Skin A', img:'assets/img/Internet_20251101_162208_3.jpeg', price:50, type:'skin'},
@@ -1285,8 +1284,8 @@ const shopItems = [
   {id:'speed10', title:'Velocidad +10%', img:'assets/img/Internet_20251101_162208_5.jpeg', price:300, type:'speed', value:1.10},
   {id:'frame', title:'Star Premium', img:'assets/img/Internet_20251101_162208_5.jpeg', price:500, type:'frame'},
   {id:'gif', title:'Subir GIF (premium)', img:'assets/img/Internet_20251101_162208_4.jpeg', price:900, type:'gif'},
-  {id:'music', title:'Desbloquear canción (50000)', img:'assets/img/Internet_20251101_162208_4.jpeg', price:50000, type:'music'},
-  {id:'music', title:'Verificado Premium (100,000)', img:'assets/img/Internet_20251101_162208_4.jpeg', price:100000, type:'vc'}
+  {id:'musicUnlock', title:'Desbloquear canción (50000)', img:'assets/img/Internet_20251101_162208_4.jpeg', price:50000, type:'music'},
+  {id:'verified', title:'Verificado Premium (100,000)', img:'assets/img/Internet_20251101_162208_4.jpeg', price:100000, type:'vc'}
 ];
 
 function renderShop(){
@@ -1334,7 +1333,7 @@ function closeShopFunc() {
   } catch (e) {}
 }
 closeShop.addEventListener('click', closeShopFunc);
-openShopBtn.addEventListener('click', openShop);
+openShopBtns.forEach(btn => btn.addEventListener('click', openShop));
 
 /* buy item */
 function buyItem(item, btn, status){
@@ -1357,7 +1356,7 @@ function buyItem(item, btn, status){
       persist();
       addMessage('Sistema','Skin aplicada', true);
       renderShop();
-      socket.emit('updatePlayer', {skinImg: img.src});
+      if (socket.connected && currentServerId) socket.emit('updatePlayer', {skinImg: img.src});
     };
     img.onerror = () => addMessage('Sistema','Imagen de skin no encontrada', true);
     img.src = src;
@@ -1365,7 +1364,7 @@ function buyItem(item, btn, status){
   else if(item.type === 'speed'){
     player.speed *= item.value;
     addMessage('Sistema','Velocidad aumentada', true);
-    socket.emit('updatePlayer', {speed: player.speed});
+    if (socket.connected && currentServerId) socket.emit('updatePlayer', {speed: player.speed});
   }
   else if(item.type === 'marco'){
     const img = new Image();
@@ -1375,7 +1374,7 @@ function buyItem(item, btn, status){
       persist();
       addMessage('Sistema','Marco activado', true);
       renderShop();
-      socket.emit('updatePlayer', {marco: img.src});
+      if (socket.connected && currentServerId) socket.emit('updatePlayer', {marco: img.src});
     };
     img.onerror = () => addMessage('Sistema','Marco no encontrada', true);
     img.src = 'assets/marcos/1762003570462.png';
@@ -1388,7 +1387,7 @@ function buyItem(item, btn, status){
       persist();
       addMessage('Sistema','Insignia activada', true);
       renderShop();
-      socket.emit('updatePlayer', {insignia: img.src});
+      if (socket.connected && currentServerId) socket.emit('updatePlayer', {insignia: img.src});
     };
     img.onerror = () => addMessage('Sistema','Insignia no encontrada', true);
     img.src = 'assets/insignias/premium.png';
@@ -1407,7 +1406,7 @@ function buyItem(item, btn, status){
         persist();
         addMessage('Sistema','GIF subido correctamente', true);
         renderShop();
-        socket.emit('updatePlayer', {gif: reader.result});
+        if (socket.connected && currentServerId) socket.emit('updatePlayer', {gif: reader.result});
       };
       reader.readAsDataURL(file);
     };
@@ -1435,7 +1434,7 @@ function buyItem(item, btn, status){
   persist();
   updatePointsUI();
   renderShop();
-  socket.emit('updatePlayer', {points: player.points, purchases: player.purchases});
+  if (socket.connected && currentServerId) socket.emit('updatePlayer', {points: player.points, purchases: player.purchases});
 }
 
 /* ------------------------- Modals upload/flag handlers ------------------------- */
@@ -1454,13 +1453,13 @@ modalSubmitPhoto.addEventListener('click', ()=>{
   if(player.points < 250){ addMessage('Sistema','No tienes 250 pts.', true); modalBackdrop.style.display='none'; return; }
   const f = modalFileInput.files[0]; if(!f){ addMessage('Sistema','Selecciona archivo.', true); return; }
   if(!/image\/(png|jpeg|jpg)/.test(f.type)){ addMessage('Sistema','Formato incorrecto.', true); return; }
-  const r = new FileReader(); r.onload = e => { const img = new Image(); img.onload=()=>{ player.skinImage=img; player.points -= 250; state.playerData.skinImg = img.src; persist(); addMessage('Sistema','Foto aplicada.', true); modalBackdrop.style.display='none'; updatePointsUI(); socket.emit('updatePlayer', {skinImg: img.src, points: player.points}); }; img.src = e.target.result; }; r.readAsDataURL(f);
+  const r = new FileReader(); r.onload = e => { const img = new Image(); img.onload=()=>{ player.skinImage=img; player.points -= 250; state.playerData.skinImg = img.src; persist(); addMessage('Sistema','Foto aplicada.', true); modalBackdrop.style.display='none'; updatePointsUI(); if (socket.connected && currentServerId) socket.emit('updatePlayer', {skinImg: img.src, points: player.points}); }; img.src = e.target.result; }; r.readAsDataURL(f);
 });
 
 modalSubmitFlag.addEventListener('click', ()=>{
   if(player.points < 700){ addMessage('Sistema','No tienes 700 pts.', true); modalBackdrop.style.display='none'; return; }
   const code = flagSelect.value; if(!code){ addMessage('Sistema','Selecciona bandera.', true); return; }
-  const img = new Image(); img.onload = ()=>{ player.flagImage = img; player.points -= 700; state.playerData.flag = img.src; persist(); addMessage('Sistema','Bandera aplicada.', true); modalBackdrop.style.display='none'; updatePointsUI(); socket.emit('updatePlayer', {flag: img.src, points: player.points}); };
+  const img = new Image(); img.onload = ()=>{ player.flagImage = img; player.points -= 700; state.playerData.flag = img.src; persist(); addMessage('Sistema','Bandera aplicada.', true); modalBackdrop.style.display='none'; updatePointsUI(); if (socket.connected && currentServerId) socket.emit('updatePlayer', {flag: img.src, points: player.points}); };
   img.onerror = ()=> addMessage('Sistema','Bandera no encontrada: img/flags/'+code+'.png', true);
   img.src = `img/flags/${code}.png`;
 });
@@ -1471,7 +1470,7 @@ fileInput.addEventListener('change', e=>{
   const f = e.target.files[0]; if(!f) return;
   if(player.points < 250){ addMessage('Sistema','Necesitas 250 pts', true); return; }
   if(!/image\/(png|jpeg|jpg)/.test(f.type)){ addMessage('Sistema','Formato no permitido', true); return; }
-  const r = new FileReader(); r.onload = ev => { const img = new Image(); img.onload=()=>{ player.skinImage = img; state.playerData.skinImg = img.src; player.points -= 250; persist(); addMessage('Sistema','Foto aplicada desde control.', true); updatePointsUI(); socket.emit('updatePlayer', {skinImg: img.src, points: player.points}); }; img.src = ev.target.result; }; r.readAsDataURL(f);
+  const r = new FileReader(); r.onload = ev => { const img = new Image(); img.onload=()=>{ player.skinImage = img; state.playerData.skinImg = img.src; player.points -= 250; persist(); addMessage('Sistema','Foto aplicada desde control.', true); updatePointsUI(); if (socket.connected && currentServerId) socket.emit('updatePlayer', {skinImg: img.src, points: player.points}); }; img.src = ev.target.result; }; r.readAsDataURL(f);
 });
 
 /* ------------------------- HUD points UI ------------------------- */
@@ -1513,7 +1512,7 @@ window.addEventListener('beforeunload', ()=>{
   const delta = Math.floor((Date.now() - (player.sessionStart||Date.now()))/1000); 
   localStorage.setItem('bubbleao_play_seconds', prev + delta); 
   persist(); 
-  socket.emit('disconnectPlayer');
+  if (socket.connected) socket.emit('disconnectPlayer');
 });
 
 window.__GAME = { player, players, bots, miniBots, foods, persist };
@@ -1521,8 +1520,6 @@ window.__GAME = { player, players, bots, miniBots, foods, persist };
 /* =========
    Datos iniciales de servidores (now fetched from server)
    ========= */
-let servers = [];
-let favorites = JSON.parse(localStorage.getItem('favorites_v1')) || [];
 
 /* ====== Referencias DOM ====== */
 const serverMenu = document.getElementById('serverMenu');
@@ -1883,167 +1880,6 @@ renderList();
     img.addEventListener('contextmenu', function(ev){ ev.preventDefault(); }, false);
     img.addEventListener('dragstart', function(ev){ ev.preventDefault(); }, false);
   });
-</script>
-</body>
-</html>
-const socket = io(); // si usas una ruta diferente, pasa la URL
-
-// DOM
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const startBtn = document.getElementById("startBtn");
-const nameInput = document.getElementById("nameInput");
-const countSpan = document.getElementById("count");
-
-let me = null;
-let players = {}; // snapshot del servidor
-
-// Input
-const keys = {};
-window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
-window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
-
-// iniciar
-startBtn.addEventListener('click', () => {
-  if (me) return;
-  const name = nameInput.value.trim() || ("Anon" + Math.floor(Math.random()*999));
-  const color = `hsl(${Math.floor(Math.random()*360)},70%,50%)`;
-  const init = { name, color, x: Math.random()* (canvas.width-100) + 50, y: Math.random()*(canvas.height-100)+50 };
-  me = { id: null, ...init, vx:0, vy:0, size: 26 };
-  socket.emit('newPlayer', init);
-  nameInput.disabled = true;
-  startBtn.disabled = true;
-});
-
-// socket events
-socket.on('connect', () => {
-  console.log('Conectado al servidor', socket.id);
-});
-
-socket.on('currentPlayers', (data) => {
-  // snapshot recibido al entrar (puede incluirme si ya me registré)
-  players = data;
-  // si el servidor ya creó mi id, lo tomamos
-  if (players[socket.id]) {
-    me = players[socket.id];
-  }
-  updateCount();
-});
-socket.on('playerJoined', (p) => {
-  players[p.id] = p;
-  updateCount();
-});
-socket.on('playerLeft', (id) => {
-  delete players[id];
-  updateCount();
-});
-socket.on('state', (data) => {
-  // reemplazamos snapshot completo (simple)
-  players = data;
-  // si mi cliente aún no conoce su id (puede ocurrir al principio), si el servidor incluyó socket.id lo seteamos
-  if (me && !me.id && players && players[socket.id]) {
-    me = players[socket.id];
-  }
-  updateCount();
-});
-
-// contador
-function updateCount(){
-  countSpan.textContent = Object.keys(players).length;
-}
-
-// lógica de movimiento local
-function updateLocal(dt){
-  if (!me) return;
-  const speed = 160; // px/s
-  let dx = 0, dy = 0;
-  if (keys['w'] || keys['arrowup']) dy -= 1;
-  if (keys['s'] || keys['arrowdown']) dy += 1;
-  if (keys['a'] || keys['arrowleft']) dx -= 1;
-  if (keys['d'] || keys['arrowright']) dx += 1;
-
-  // normalizar
-  if (dx !== 0 || dy !== 0){
-    const mag = Math.sqrt(dx*dx + dy*dy);
-    dx /= mag; dy /= mag;
-  }
-
-  me.vx = dx * speed;
-  me.vy = dy * speed;
-
-  me.x += me.vx * dt;
-  me.y += me.vy * dt;
-
-  // límites
-  me.x = Math.max(me.size, Math.min(canvas.width - me.size, me.x));
-  me.y = Math.max(me.size, Math.min(canvas.height - me.size, me.y));
-
-  // enviar al servidor 12 veces por segundo máximo
-  if (!me._lastSent || Date.now() - me._lastSent > 80) {
-    socket.emit('playerMove', { x: me.x, y: me.y, vx: me.vx, vy: me.vy });
-    me._lastSent = Date.now();
-  }
-}
-
-// dibujado
-function draw(){
-  // fondo
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  // grid suave
-  ctx.save();
-  ctx.globalAlpha = 0.06;
-  ctx.fillStyle = "#ffffff";
-  for (let gx = 0; gx < canvas.width; gx += 40) ctx.fillRect(gx,0,1,canvas.height);
-  for (let gy = 0; gy < canvas.height; gy += 40) ctx.fillRect(0,gy,canvas.width,1);
-  ctx.restore();
-
-  // dibujar todos los players (snapshot)
-  for (const id in players){
-    const p = players[id];
-    if (!p) continue;
-    // si soy yo, usar datos locales para suavizar
-    const isMe = (socket.id === id);
-    const x = (isMe && me) ? me.x : p.x;
-    const y = (isMe && me) ? me.y : p.y;
-    const size = p.size || 22;
-    // bubble con fondo
-    ctx.beginPath();
-    ctx.fillStyle = p.color || "#66ccff";
-    ctx.globalAlpha = 0.95;
-    ctx.arc(x, y, size, 0, Math.PI*2);
-    ctx.fill();
-    ctx.closePath();
-    // borde
-    ctx.beginPath();
-    ctx.strokeStyle = "rgba(255,255,255,0.25)";
-    ctx.lineWidth = 2;
-    ctx.arc(x, y, size, 0, Math.PI*2);
-    ctx.stroke();
-    ctx.closePath();
-    // nombre
-    ctx.font = "13px system-ui, sans-serif";
-    ctx.fillStyle = "#fff";
-    ctx.globalAlpha = 0.95;
-    ctx.textAlign = "center";
-    ctx.fillText(p.name || "Anon", x, y - size - 8);
-  }
-}
-
-// game loop
-let last = performance.now();
-function tick(now){
-  const dt = (now - last) / 1000;
-  last = now;
-  updateLocal(dt);
-  draw();
-  requestAnimationFrame(tick);
-}
-requestAnimationFrame(tick);
-
-// redimensionar canvas responsivo opcional
-function fitCanvas(){
-  // opcional: dejar fijo o escalable. Mantengo fijo 900x600 para simplicidad
-}
 </script>
 </body>
   </html>
