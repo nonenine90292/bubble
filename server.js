@@ -22,50 +22,52 @@ if (cluster.isMaster) {
     cluster.fork();
   });
 } else {
-  // --- Worker: Servidor principal ---
+  // Worker: Setup del servidor
   const app = express();
   const server = http.createServer(app);
   const io = socketIo(server, {
     cors: { origin: '*', methods: ['GET', 'POST'] },
     pingInterval: 10000,
     pingTimeout: 5000,
-    maxHttpBufferSize: 1e6,
+    maxHttpBufferSize: 1e6, // Límite para payloads grandes (imágenes)
   });
 
-  // --- Middlewares ---
+  // Middleware optimizado
   app.use(compression());
   app.use(cors());
   app.use(express.json({ limit: '10mb' }));
-  app.use(express.static(path.join(__dirname, 'public')));
+  app.use(express.static(path.join(__dirname, 'public'))); // Sirve el HTML/cliente
 
-  // --- Rate Limiter (opcional para API REST) ---
+  // Rate limiting para endpoints HTTP (opcional, para APIs)
   const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
+    windowMs: 15 * 60 * 1000, // 15 min
+    max: 100, // 100 req por IP
     standardHeaders: true,
     legacyHeaders: false,
   });
   app.use('/api/', limiter);
 
-  // --- Servidores simulados ---
+  // Simulación de servidores (datos mock, en prod: lee de DB)
   const servers = [
     { id: 1, name: 'EU #1', map: 'Procedimental', playersCur: 45, playersMax: 70, state: 'online', ping: 45, tags: ['PVE', 'PREMIUM'], flags: { A_DIARIO: true, PREMIUM: true }, desc: 'Servidor premium diario.' },
     { id: 2, name: 'EU #2', map: 'Custom', playersCur: 23, playersMax: 70, state: 'online', ping: 78, tags: ['PVP'], flags: { SEMANAL: true }, desc: 'PvP semanal.' },
     { id: 3, name: 'EU #3', map: 'Procedimental', playersCur: 67, playersMax: 70, state: 'downloading', ping: 32, tags: ['PVE_ONLY'], flags: { MENSUAL: true }, desc: 'PVE mensual.' },
+    // Agrega más...
   ];
 
-  // --- Estado global ---
+  // Estado global por servidor (en prod: usa Redis para escalabilidad)
   const serverStates = {};
   servers.forEach(s => {
     serverStates[s.id] = {
-      players: {},
-      bots: {},
-      miniBots: {},
-      foods: {},
+      players: {}, // {socketId: playerData}
+      bots: {},    // {id: botData}
+      miniBots: {}, // {id: miniBotData}
+      foods: {},   // {id: foodData}
+      playerCounts: {}, // Actualizaciones de counts
     };
   });
 
-  // --- Generador de bots y foods ---
+  // Generador de bots y foods (simulado)
   function generateBotsAndFoods(serverId, numBots = 20, numFoods = 100, numMini = 10) {
     const state = serverStates[serverId];
     // Bots
@@ -103,57 +105,36 @@ if (cluster.isMaster) {
   }
   servers.forEach(s => generateBotsAndFoods(s.id));
 
-  // --- SOCKET.IO ---
+  // Socket events
   io.on('connection', (socket) => {
     console.log(`Cliente conectado: ${socket.id}`);
-
-    let currentServerId = null;
-    let interval = null;
 
     // Envía lista de servidores
     socket.on('getServers', () => {
       socket.emit('servers', servers);
     });
 
-    // Unirse a un servidor
+    // Únete a un servidor
     socket.on('joinServer', ({ serverId, playerData }) => {
       if (!serverStates[serverId]) return socket.disconnect();
-
-      currentServerId = serverId;
       const state = serverStates[serverId];
-      state.players[socket.id] = {
-        ...playerData,
-        id: socket.id,
-        x: Math.random() * 4000,
-        y: Math.random() * 4000,
-        speed: 5
-      };
-
-      socket.join(`server_${serverId}`);
-      socket.emit('state', state);
-      io.to(`server_${serverId}`).emit('playerCountUpdate', {
-        [serverId]: Object.keys(state.players).length
-      });
-
-      // Simulación continua
-      interval = setInterval(() => {
-        if (currentServerId) {
-          Object.values(serverStates[currentServerId].bots).forEach(bot => {
-            bot.x += (Math.random() - 0.5) * 2;
-            bot.y += (Math.random() - 0.5) * 2;
-          });
-          socket.emit('state', serverStates[currentServerId]);
-        }
-      }, 50);
+      state.players[socket.id] = { ...playerData, id: socket.id, x: Math.random() * 4000, y: Math.random() * 4000 };
+      socket.currentServerId = serverId;  // Fix: Track per socket
+      socket.join(`server_${serverId}`); // Room para broadcasts
+      socket.emit('state', state); // Envía estado inicial
+      socket.emit('joinAck', serverId);  // Nuevo: Ack para cliente
+      io.to(`server_${serverId}`).emit('playerCountUpdate', { [serverId]: Object.keys(state.players).length });
     });
 
-    // Movimiento
+    // Movimiento del jugador
     socket.on('move', (dir) => {
+      const currentServerId = socket.currentServerId;
       if (!currentServerId) return;
-      const player = serverStates[currentServerId]?.players[socket.id];
+      const player = serverStates[currentServerId]?.players[socket.id]; // Fix: Usa tracked ID
       if (player) {
         player.x += dir.x * player.speed;
         player.y += dir.y * player.speed;
+        // Wrap around world
         if (player.x < 0) player.x += 4000;
         if (player.x > 4000) player.x -= 4000;
         if (player.y < 0) player.y += 4000;
@@ -163,48 +144,55 @@ if (cluster.isMaster) {
 
     // Chat
     socket.on('chat', (text) => {
+      const currentServerId = socket.currentServerId;
       if (!currentServerId) return;
-      const player = serverStates[currentServerId]?.players[socket.id];
-      if (player) {
-        io.to(`server_${currentServerId}`).emit('chat', {
-          sender: player.name,
-          text
-        });
-      }
+      io.to(`server_${currentServerId}`).emit('chat', { sender: player.name, text });  // Fix: player.name from tracked
     });
 
-    // Actualiza jugador
+    // Actualiza jugador (skins, points, etc.)
     socket.on('updatePlayer', (updates) => {
+      const currentServerId = socket.currentServerId;
       if (!currentServerId) return;
       const player = serverStates[currentServerId]?.players[socket.id];
       if (player) {
         Object.assign(player, updates);
-        socket.to(`server_${currentServerId}`).emit('playerUpdate', {
-          id: socket.id,
-          ...updates
-        });
+        // Broadcast update a room
+        socket.to(`server_${currentServerId}`).emit('playerUpdate', { id: socket.id, ...updates });
       }
     });
 
-    // Desconexión
+    // Simula updates de estado cada 50ms (optimizado: solo delta changes en prod)
+    const interval = setInterval(() => {
+      const currentServerId = socket.currentServerId;
+      if (currentServerId) {
+        // Simula movimiento de bots/foods (en prod: physics engine)
+        Object.values(serverStates[currentServerId].bots).forEach(bot => {
+          bot.x += (Math.random() - 0.5) * 2;
+          bot.y += (Math.random() - 0.5) * 2;
+        });
+        socket.emit('state', serverStates[currentServerId]);
+      }
+    }, 50);
+
     socket.on('disconnect', () => {
+      // Limpia jugador
+      const currentServerId = socket.currentServerId;
       if (currentServerId) {
         delete serverStates[currentServerId].players[socket.id];
-        io.to(`server_${currentServerId}`).emit('playerCountUpdate', {
-          [currentServerId]: Object.keys(serverStates[currentServerId].players).length
-        });
+        io.to(`server_${currentServerId}`).emit('playerCountUpdate', { [currentServerId]: Object.keys(serverStates[currentServerId].players).length });
       }
-      if (interval) clearInterval(interval);
+      clearInterval(interval);
       console.log(`Cliente desconectado: ${socket.id}`);
     });
   });
 
-  // --- Servir cliente HTML ---
+  // Ruta para servir el cliente HTML
   app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    res.sendFile(path.join(__dirname, 'public', 'index.html')); // Asume HTML en /public
   });
 
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, () => {
     console.log(`Worker ${process.pid} escuchando en puerto ${PORT}`);
   });
+             }
