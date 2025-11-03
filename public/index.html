@@ -1,11 +1,198 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mi Página Node.js</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Bubble Multiplayer</title>
+<style>
+  :root{--bg:#0f1720;--panel:#0b1220;--accent:#00ffc8}
+  html,body{height:100%;margin:0;background:linear-gradient(180deg,#071021,#0b1220);color:#fff;font-family:Inter,system-ui,Helvetica,Arial}
+  #ui{position:fixed;left:12px;top:12px;z-index:10}
+  #playersCount{font-weight:700;margin-bottom:8px}
+  #nameInput{padding:8px;border-radius:6px;border:0;outline:none;width:180px}
+  #startBtn{padding:8px 12px;border-radius:6px;border:0;background:var(--accent);color:#000;cursor:pointer;margin-left:8px}
+  #canvas{display:block;margin:0 auto; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.4)); border-radius:8px; box-shadow: 0 10px 40px rgba(0,0,0,0.6);}
+  .legend{opacity:0.85;font-size:13px;margin-top:6px}
+</style>
 </head>
-<body style="font-family:sans-serif; text-align:center; background:#111; color:#fff;">
-  <h1>¡Servidor Node.js corriendo en Render! 🚀</h1>
+<body>
+  <div id="ui">
+    <div id="playersCount">Jugadores en línea: <span id="count">0</span></div>
+    <input id="nameInput" placeholder="Tu nombre" maxlength="20" />
+    <button id="startBtn">Entrar</button>
+    <div class="legend">Control: WASD / Flechas — Ver jugadores en tiempo real</div>
+  </div>
+
+  <canvas id="canvas" width="900" height="600"></canvas>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+/*
+ Cliente del juego bubble multijugador
+ - Conecta a Socket.IO
+ - Controla un círculo con WASD / flechas
+ - Sincroniza posición con el servidor
+ - Dibuja a todos los jugadores recibidos en 'state'
+*/
+
+const socket = io(); // si usas una ruta diferente, pasa la URL
+
+// DOM
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const startBtn = document.getElementById("startBtn");
+const nameInput = document.getElementById("nameInput");
+const countSpan = document.getElementById("count");
+
+let me = null;
+let players = {}; // snapshot del servidor
+
+// Input
+const keys = {};
+window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+// iniciar
+startBtn.addEventListener('click', () => {
+  if (me) return;
+  const name = nameInput.value.trim() || ("Anon" + Math.floor(Math.random()*999));
+  const color = `hsl(${Math.floor(Math.random()*360)},70%,50%)`;
+  const init = { name, color, x: Math.random()* (canvas.width-100) + 50, y: Math.random()*(canvas.height-100)+50 };
+  me = { id: null, ...init, vx:0, vy:0, size: 26 };
+  socket.emit('newPlayer', init);
+  nameInput.disabled = true;
+  startBtn.disabled = true;
+});
+
+// socket events
+socket.on('connect', () => {
+  console.log('Conectado al servidor', socket.id);
+});
+
+socket.on('currentPlayers', (data) => {
+  // snapshot recibido al entrar (puede incluirme si ya me registré)
+  players = data;
+  // si el servidor ya creó mi id, lo tomamos
+  if (players[socket.id]) {
+    me = players[socket.id];
+  }
+  updateCount();
+});
+socket.on('playerJoined', (p) => {
+  players[p.id] = p;
+  updateCount();
+});
+socket.on('playerLeft', (id) => {
+  delete players[id];
+  updateCount();
+});
+socket.on('state', (data) => {
+  // reemplazamos snapshot completo (simple)
+  players = data;
+  // si mi cliente aún no conoce su id (puede ocurrir al principio), si el servidor incluyó socket.id lo seteamos
+  if (me && !me.id && players && players[socket.id]) {
+    me = players[socket.id];
+  }
+  updateCount();
+});
+
+// contador
+function updateCount(){
+  countSpan.textContent = Object.keys(players).length;
+}
+
+// lógica de movimiento local
+function updateLocal(dt){
+  if (!me) return;
+  const speed = 160; // px/s
+  let dx = 0, dy = 0;
+  if (keys['w'] || keys['arrowup']) dy -= 1;
+  if (keys['s'] || keys['arrowdown']) dy += 1;
+  if (keys['a'] || keys['arrowleft']) dx -= 1;
+  if (keys['d'] || keys['arrowright']) dx += 1;
+
+  // normalizar
+  if (dx !== 0 || dy !== 0){
+    const mag = Math.sqrt(dx*dx + dy*dy);
+    dx /= mag; dy /= mag;
+  }
+
+  me.vx = dx * speed;
+  me.vy = dy * speed;
+
+  me.x += me.vx * dt;
+  me.y += me.vy * dt;
+
+  // límites
+  me.x = Math.max(me.size, Math.min(canvas.width - me.size, me.x));
+  me.y = Math.max(me.size, Math.min(canvas.height - me.size, me.y));
+
+  // enviar al servidor 12 veces por segundo máximo
+  if (!me._lastSent || Date.now() - me._lastSent > 80) {
+    socket.emit('playerMove', { x: me.x, y: me.y, vx: me.vx, vy: me.vy });
+    me._lastSent = Date.now();
+  }
+}
+
+// dibujado
+function draw(){
+  // fondo
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // grid suave
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle = "#ffffff";
+  for (let gx = 0; gx < canvas.width; gx += 40) ctx.fillRect(gx,0,1,canvas.height);
+  for (let gy = 0; gy < canvas.height; gy += 40) ctx.fillRect(0,gy,canvas.width,1);
+  ctx.restore();
+
+  // dibujar todos los players (snapshot)
+  for (const id in players){
+    const p = players[id];
+    if (!p) continue;
+    // si soy yo, usar datos locales para suavizar
+    const isMe = (socket.id === id);
+    const x = (isMe && me) ? me.x : p.x;
+    const y = (isMe && me) ? me.y : p.y;
+    const size = p.size || 22;
+    // bubble con fondo
+    ctx.beginPath();
+    ctx.fillStyle = p.color || "#66ccff";
+    ctx.globalAlpha = 0.95;
+    ctx.arc(x, y, size, 0, Math.PI*2);
+    ctx.fill();
+    ctx.closePath();
+    // borde
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(255,255,255,0.25)";
+    ctx.lineWidth = 2;
+    ctx.arc(x, y, size, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.closePath();
+    // nombre
+    ctx.font = "13px system-ui, sans-serif";
+    ctx.fillStyle = "#fff";
+    ctx.globalAlpha = 0.95;
+    ctx.textAlign = "center";
+    ctx.fillText(p.name || "Anon", x, y - size - 8);
+  }
+}
+
+// game loop
+let last = performance.now();
+function tick(now){
+  const dt = (now - last) / 1000;
+  last = now;
+  updateLocal(dt);
+  draw();
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// redimensionar canvas responsivo opcional
+function fitCanvas(){
+  // opcional: dejar fijo o escalable. Mantengo fijo 900x600 para simplicidad
+}
+</script>
 </body>
-</html>
+  </html>
