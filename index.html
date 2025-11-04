@@ -815,9 +815,9 @@
     </div>
 
     <button id="btnFriends" class="nav-btn">Amigos</button>
-    <button id="btnFriends" class="nav-btn">Cuenta</button>
-    <button id="btnFriends" class="nav-btn">Battle Guilds</button>
-    <button id="btnFriends" class="nav-btn">Ranking</button>
+        <button id="btnFriends" class="nav-btn">Cuenta</button>
+            <button id="btnFriends" class="nav-btn">Battle Guilds</button>
+                <button id="btnFriends" class="nav-btn">Ranking</button>
                                
     <div style="margin-top:6px;">
       <input id="searchInput" class="inline-input" placeholder="Buscar servidores por nombre...">
@@ -870,20 +870,26 @@
     </div>
 
     <div style="width:100%;">
-      <div style="display:flex;gap:8px;">
-        <a href="https://tutienda.com" class="icon-btn" title="Tienda" target="_blank">
-          <i class="fa-solid fa-box-open"></i>
-        </a>
-        <a href="https://discord.gg/tuServidor" class="icon-btn" title="Discord" target="_blank">
-          <i class="fa-brands fa-discord"></i>
-        </a>
-        <a href="mailto:contacto@tusitio.com" class="icon-btn" title="Enviar">
-          <i class="fa-solid fa-paper-plane"></i>
-        </a>
-        <a href="#" class="icon-btn" title="Idioma">
-          <i class="fa-solid fa-language"></i>
-        </a>
-      </div>
+  <div style="display:flex;gap:8px;">
+
+    <a href="https://tutienda.com" class="icon-btn" title="Tienda" target="_blank">
+      <i class="fa-solid fa-box-open"></i>
+    </a>
+
+    <a href="https://discord.gg/tuServidor" class="icon-btn" title="Discord" target="_blank">
+      <i class="fa-brands fa-discord"></i>
+    </a>
+
+    <a href="mailto:contacto@tusitio.com" class="icon-btn" title="Enviar">
+      <i class="fa-solid fa-paper-plane"></i>
+    </a>
+
+    <a href="#" class="icon-btn" title="Idioma">
+      <i class="fa-solid fa-language"></i>
+    </a>
+  </div>
+</div>
+</style>
     </div>
 
     <div style="margin-top:auto;font-size:12px;color:var(--muted)">v1.5.11284</div>
@@ -986,14 +992,23 @@
     </div>
 
     <div class="shopGrid" id="shopGrid">
-      <!-- EJEMPLO DE TARJETA -->
+      <!-- EJEMPLO DE TARJETA CON ICONOS -->
       <div class="card">
         <img src="items/item1.png" alt="Item 1" onerror="this.style.opacity=.4">
-        <div class="title"><i class="fa-solid fa-star"></i> Item 1</div>
-        <div class="price"><i class="fa-solid fa-coins"></i> 100</div>
-        <button class="buyBtn"><i class="fa-solid fa-cart-shopping"></i> Comprar</button>
-        <div class="status on"><i class="fa-solid fa-check"></i> Disponible</div>
+        <div class="title">
+          <i class="fa-solid fa-star"></i> Item 1
+        </div>
+        <div class="price">
+          <i class="fa-solid fa-coins"></i> 100
+        </div>
+        <button class="buyBtn">
+          <i class="fa-solid fa-cart-shopping"></i> Comprar
+        </button>
+        <div class="status on">
+          <i class="fa-solid fa-check"></i> Disponible
+        </div>
       </div>
+      <!-- puedes duplicar tarjetas según tus items -->
     </div>
   </div>
 </div>
@@ -1016,7 +1031,7 @@ try { const s = localStorage.getItem(LS_KEY); if(s) state = JSON.parse(s); } cat
 function persist(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 
 /* ------------------------- DOM refs ------------------------- */
-const shopOverlay = document.getElementById('shopOverlay');
+const openShopFromMenu = document.getElementById('openShopFromMenu'), shopOverlay = document.getElementById('shopOverlay');
 const closeShop = document.getElementById('closeShop'), pointsCounter = document.getElementById('pointsCounter');
 const topLeftControls = document.getElementById('topLeftControls'), nameInput = document.getElementById('nameInput');
 const uploadButton = document.getElementById('uploadButton'), fileInput = document.getElementById('fileInput');
@@ -1053,15 +1068,25 @@ const realNames = ["Carlos","María","José","Lucía","Diego","Sofía","Andrés"
 function makeName(){ return realNames[Math.floor(Math.random()*realNames.length)] + "-" + Math.floor(Math.random()*9000); }
 
 function absorb(target, addedR) {
+  // Calcular masa agregada (el tamaño de lo comido)
   const addMass = Math.PI * addedR * addedR;
   const currentMass = Math.PI * target.radius * target.radius;
   const newMass = currentMass + addMass;
+
+  // Radio nuevo que debería tener según su masa total
   const newRadius = Math.sqrt(newMass / Math.PI);
-  const growthSmooth = 30;
+
+  // Hacemos que el crecimiento se vea (suave pero notorio)
+  const growthSmooth = 30; // entre 0.3 y 0.6 es visualmente natural
   target.radius += (newRadius - target.radius) * growthSmooth;
+
+  // Limitar al máximo definido
   target.radius = Math.min(target.radius, MAX_RADIUS);
+
+  // Actualizar masa real
   target.mass = Math.PI * target.radius * 30;
 
+  // Si el jugador es quien come, sumar puntos
   if (target === player) {
     const pointsGained = Math.floor(addedR * 2);
     player.points += pointsGained;
@@ -1071,17 +1096,18 @@ function absorb(target, addedR) {
   }
 }
 
+
 /* Player */
 let player = {
-  id: null,
+  id: null, // Assigned by server
   name: state.playerData.name || "Jugador",
   x:0,y:0,radius:INITIAL_RADIUS*3.0,mass: Math.PI*INITIAL_RADIUS*9.0, color: randomColor(),
   speed: INITIAL_SPEED, points: state.points || 0, skinImage:null, flagImage:null, insignia:null, purchases: state.purchases || {}
 };
-let players = {};
-let bots = {};
-let miniBots = {};
-let foods = {};
+let players = {}; // Now an object with id as key
+let bots = {}; // Object with id as key
+let miniBots = {}; // Object with id as key
+let foods = {}; // Object with id as key
 let moveDir = {x:0,y:0};
 let inputFocused = false;
 let currentServerId = null;
@@ -1093,6 +1119,7 @@ if(state.playerData.insignia){ const i=new Image(); i.onload=()=>player.insignia
 if(state.playerData.marco){ const i=new Image(); i.onload=()=>player.marco=i; i.src=state.playerData.marco; }
 
 /* ------------------------- Audio ------------------------- */
+state.settings = state.settings || { loginMusic:true, gameMusic:true, musicUnlocked:false };
 if(state.settings.loginMusic){ try{ loginSound.play().catch(()=>{}); }catch(e){} }
 if(state.settings.gameMusic && state.settings.musicUnlocked){ try{ gameMusic.play().catch(()=>{}); }catch(e){} }
 
@@ -1156,6 +1183,25 @@ function findByName(name){
   return null;
 }
 
+/* ------------------------- ABSORB CORREGIDO (CRECIMIENTO FIABLE) ------------------------- */
+function absorb(target, eatenRadius) {
+  const addedMass = Math.PI * eatenRadius * eatenRadius;
+  const currentMass = Math.PI * target.radius * target.radius;
+  const newMass = currentMass + addedMass;
+  target.radius = Math.sqrt(newMass / Math.PI);
+
+  if (target.radius > MAX_RADIUS) target.radius = MAX_RADIUS;
+
+  // si es el jugador, sumar puntos
+  if (target.id === player.id) {
+    const pointsGained = Math.floor(eatenRadius * 3);
+    player.points += pointsGained;
+    state.points = player.points;
+    persist();
+    updatePointsUI();
+    socket.emit('updatePlayer', {radius: target.radius, points: player.points});
+  }
+}
 /* ------------------------- Rendering & camera ------------------------- */
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -1238,7 +1284,7 @@ function updateLeaderboard(entities){
 /* ------------------------- Socket events ------------------------- */
 socket.on('connect', () => {
   console.log('Connected to server');
-  socket.emit('getServers');
+  socket.emit('getServers'); // Request server list
 });
 
 socket.on('servers', (serverList) => {
@@ -1261,6 +1307,7 @@ socket.on('chat', (msg) => {
 });
 
 socket.on('playerCountUpdate', (counts) => {
+  // Update server list player counts
   Object.keys(counts).forEach(id => {
     const s = servers.find(s => s.id == id);
     if(s) s.playersCur = counts[id];
@@ -1270,12 +1317,30 @@ socket.on('playerCountUpdate', (counts) => {
 });
 
 /* ------------------------- Shop items & UI ------------------------- */
-const shopItems = [/* ... tus items ... */];
+const shopItems = [
+  {id:'skinA', title:'Skin A', img:'assets/img/Internet_20251101_162208_3.jpeg', price:50, type:'skin'},
+  {id:'skinB', title:'Skin B', img:'assets/img/Internet_20251101_162208_3.jpeg', price:80, type:'skin1'},
+  {id:'marcoA', title:'Marco Premium', img:'assets/img/Internet_20251101_162208_6.jpeg', price:190, type:'marco'},
+  {id:'speed10', title:'Velocidad +10%', img:'assets/img/Internet_20251101_162208_5.jpeg', price:300, type:'speed', value:1.10},
+  {id:'frame', title:'Star Premium', img:'assets/img/Internet_20251101_162208_5.jpeg', price:500, type:'frame'},
+  {id:'gif', title:'Subir GIF (premium)', img:'assets/img/Internet_20251101_162208_4.jpeg', price:900, type:'gif'},
+  {id:'music', title:'Desbloquear canción (50000)', img:'assets/img/Internet_20251101_162208_4.jpeg', price:50000, type:'music'},
+  {id:'music', title:'Verificado Premium (100,000)', img:'assets/img/Internet_20251101_162208_4.jpeg', price:100000, type:'vc'}
+];
 
 function renderShop(){
   shopGrid.innerHTML = '';
   pointsDisplay.textContent = player.points || 0;
-  // ... renderizado de items
+  for(const s of shopItems){
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = `<img src="${s.img}" onerror="this.style.opacity=.4" /><div class="title">${s.title}</div><div class="price">${s.price} Pt</div>`;
+    const btn = document.createElement('button'); btn.className='buyBtn'; btn.textContent = (player.purchases && player.purchases[s.id]) ? 'Activado' : 'Comprar';
+    btn.onclick = ()=> buyItem(s, btn, status);
+    const status = document.createElement('div'); status.className = (player.purchases && player.purchases[s.id]) ? 'status on' : 'status off'; status.textContent = (player.purchases && player.purchases[s.id]) ? 'ON' : 'OFF';
+    card.appendChild(btn); card.appendChild(status);
+    shopGrid.appendChild(card);
+    s._btn = btn; s._status = status;
+  }
 }
 
 /* open/close shop */
@@ -1291,12 +1356,16 @@ function openShop(){
   pointsDisplay.textContent = player.points || 0;
 }
 function closeShopFunc() {
+  // Oculta la tienda
   shopOverlay.style.display = 'none';
+
+  // Muestra elementos del juego
   canvas.style.display = 'block';
   topLeftControls.style.display = 'flex';
   hud.style.display = 'flex';
   leaderboard.style.display = 'block';
   chatContainer.style.display = 'block';
+
   try {
     if (state.settings.gameMusic && state.settings.musicUnlocked) {
       gameMusic.play().catch(() => {});
@@ -1306,52 +1375,146 @@ function closeShopFunc() {
 closeShop.addEventListener('click', closeShopFunc);
 openShopBtn.addEventListener('click', openShop);
 
-/* ------------------------- Advertencia estilo Oxide ------------------------- */
-function mostrarAdvertencia(mensaje) {
-  const overlay = document.createElement("div");
-  overlay.className = "oxide-overlay";
+/* buy item */
+function buyItem(item, btn, status){
+  if(player.points < item.price){
+    addMessage('Sistema', `Necesitas ${item.price} pts. Tienes ${player.points||0}`, true);
+    return;
+  }
 
-  const dialog = document.createElement("div");
-  dialog.className = "oxide-dialog";
+  player.points -= item.price;
+  player.purchases = player.purchases || {};
+  player.purchases[item.id] = true;
+  state.purchases[item.id] = true;
+  
+  if(item.type === 'skin' || item.type === 'skin1'){
+    let src = item.type === 'skin' ? 'assets/skins/skin1.png' : 'assets/skins/skin2.png';
+    const img = new Image();
+    img.onload = () => {
+      player.skinImage = img;
+      state.playerData.skinImg = img.src;
+      persist();
+      addMessage('Sistema','Skin aplicada', true);
+      renderShop();
+      socket.emit('updatePlayer', {skinImg: img.src});
+    };
+    img.onerror = () => addMessage('Sistema','Imagen de skin no encontrada', true);
+    img.src = src;
+  }
+  else if(item.type === 'speed'){
+    player.speed *= item.value;
+    addMessage('Sistema','Velocidad aumentada', true);
+    socket.emit('updatePlayer', {speed: player.speed});
+  }
+  else if(item.type === 'marco'){
+    const img = new Image();
+    img.onload = () => {
+      player.marco = img;
+      state.playerData.marco = img.src;
+      persist();
+      addMessage('Sistema','Marco activado', true);
+      renderShop();
+      socket.emit('updatePlayer', {marco: img.src});
+    };
+    img.onerror = () => addMessage('Sistema','Marco no encontrada', true);
+    img.src = 'assets/marcos/1762003570462.png';
+  }
+  else if(item.type === 'frame'){
+    const img = new Image();
+    img.onload = () => {
+      player.insignia = img;
+      state.playerData.insignia = img.src;
+      persist();
+      addMessage('Sistema','Insignia activada', true);
+      renderShop();
+      socket.emit('updatePlayer', {insignia: img.src});
+    };
+    img.onerror = () => addMessage('Sistema','Insignia no encontrada', true);
+    img.src = 'assets/insignias/premium.png';
+  }
+  else if(item.type === 'gif'){
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.gif';
+    input.onchange = e => {
+      const file = e.target.files[0];
+      if(!file){ addMessage('Sistema','No seleccionaste ningún GIF', true); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        player.gif = reader.result; // base64 del gif
+        state.playerData.gif = reader.result;
+        persist();
+        addMessage('Sistema','GIF subido correctamente', true);
+        renderShop();
+        socket.emit('updatePlayer', {gif: reader.result});
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }
+  else if(item.type === 'music'){
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.mp3,.wav';
+    input.onchange = e => {
+      const file = e.target.files[0];
+      if(!file){ addMessage('Sistema','No seleccionaste ningún archivo de música', true); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        player.music = reader.result; // base64 de la música
+        state.playerData.music = reader.result;
+        persist();
+        addMessage('Sistema','Música subida correctamente', true);
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  }
 
-  dialog.innerHTML = `
-    <div class="oxide-header">ERROR</div>
-    <div class="oxide-body">${mensaje}</div>
-    <div class="oxide-footer">
-      <button class="oxide-ok">OK</button>
-    </div>
-  `;
-
-  overlay.appendChild(dialog);
-  document.body.appendChild(overlay);
-
-  dialog.querySelector(".oxide-ok").onclick = () => {
-    shopOverlay.style.display = 'none';
-    canvas.style.display = 'none';
-    topLeftControls.style.display = 'none';
-    hud.style.display = 'none';
-    leaderboard.style.display = 'none';
-    chatContainer.style.display = 'none';
-
-    const startMenu = document.getElementById('serverMenu');
-    if (startMenu) startMenu.style.display = 'grid';
-
-    try {
-      if (state.settings.gameMusic && state.settings.musicUnlocked) {
-        gameMusic.pause();
-        gameMusic.currentTime = 0;
-      }
-    } catch (e) {}
-    overlay.remove();
-  };
-
-  document.addEventListener("keydown", function esc(e) {
-    if (e.key === "Escape") {
-      overlay.remove();
-      document.removeEventListener("keydown", esc);
-    }
-  });
+  persist();
+  updatePointsUI();
+  renderShop();
+  socket.emit('updatePlayer', {points: player.points, purchases: player.purchases});
 }
+
+/* ------------------------- Modals upload/flag handlers ------------------------- */
+openUploadBtn?.addEventListener('click', ()=>{
+  if(player.points < 250){ addMessage('Sistema','Necesitas 250 pts', true); return; }
+  modalBackdrop.style.display='flex'; uploadModal.style.display='block'; flagModal.style.display='none';
+});
+openFlagBtn?.addEventListener('click', ()=>{
+  if(player.points < 700){ addMessage('Sistema','Necesitas 700 pts', true); return; }
+  modalBackdrop.style.display='flex'; uploadModal.style.display='none'; flagModal.style.display='block';
+});
+modalCancel1.addEventListener('click', ()=> modalBackdrop.style.display='none');
+modalCancel2.addEventListener('click', ()=> modalBackdrop.style.display='none');
+
+modalSubmitPhoto.addEventListener('click', ()=>{
+  if(player.points < 250){ addMessage('Sistema','No tienes 250 pts.', true); modalBackdrop.style.display='none'; return; }
+  const f = modalFileInput.files[0]; if(!f){ addMessage('Sistema','Selecciona archivo.', true); return; }
+  if(!/image\/(png|jpeg|jpg)/.test(f.type)){ addMessage('Sistema','Formato incorrecto.', true); return; }
+  const r = new FileReader(); r.onload = e => { const img = new Image(); img.onload=()=>{ player.skinImage=img; player.points -= 250; state.playerData.skinImg = img.src; persist(); addMessage('Sistema','Foto aplicada.', true); modalBackdrop.style.display='none'; updatePointsUI(); socket.emit('updatePlayer', {skinImg: img.src, points: player.points}); }; img.src = e.target.result; }; r.readAsDataURL(f);
+});
+
+modalSubmitFlag.addEventListener('click', ()=>{
+  if(player.points < 700){ addMessage('Sistema','No tienes 700 pts.', true); modalBackdrop.style.display='none'; return; }
+  const code = flagSelect.value; if(!code){ addMessage('Sistema','Selecciona bandera.', true); return; }
+  const img = new Image(); img.onload = ()=>{ player.flagImage = img; player.points -= 700; state.playerData.flag = img.src; persist(); addMessage('Sistema','Bandera aplicada.', true); modalBackdrop.style.display='none'; updatePointsUI(); socket.emit('updatePlayer', {flag: img.src, points: player.points}); };
+  img.onerror = ()=> addMessage('Sistema','Bandera no encontrada: img/flags/'+code+'.png', true);
+  img.src = `img/flags/${code}.png`;
+});
+modalBackdrop.addEventListener('click', (e)=>{ if(e.target === modalBackdrop) modalBackdrop.style.display='none'; });
+
+uploadButton.addEventListener('click', ()=> fileInput.click());
+fileInput.addEventListener('change', e=>{
+  const f = e.target.files[0]; if(!f) return;
+  if(player.points < 250){ addMessage('Sistema','Necesitas 250 pts', true); return; }
+  if(!/image\/(png|jpeg|jpg)/.test(f.type)){ addMessage('Sistema','Formato no permitido', true); return; }
+  const r = new FileReader(); r.onload = ev => { const img = new Image(); img.onload=()=>{ player.skinImage = img; state.playerData.skinImg = img.src; player.points -= 250; persist(); addMessage('Sistema','Foto aplicada desde control.', true); updatePointsUI(); socket.emit('updatePlayer', {skinImg: img.src, points: player.points}); }; img.src = ev.target.result; }; r.readAsDataURL(f);
+});
+
+/* ------------------------- HUD points UI ------------------------- */
+function updatePointsUI(){ pointsCounter.textContent = player.points || 0; pointsDisplay.textContent = player.points || 0; }
 
 /* ------------------------- Start Game ------------------------- */
 function startGameFromServer(serverId) {
@@ -1378,36 +1541,396 @@ function startGameFromServer(serverId) {
   }
 
   player.sessionStart = Date.now();
+
   socket.emit('joinServer', {serverId, playerData: player});
+
   requestAnimationFrame(tick);
 }
 
-/* ------------------------- Server List Logic (resumido) ------------------------- */
-let servers = [], favorites = JSON.parse(localStorage.getItem('favorites_v1')) || [];
-// ... (renderList, openModalForServer, etc.)
-
-/* ------------------------- Bloqueo de acciones ------------------------- */
-document.addEventListener('keydown', function(e){
-  if(e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) || (e.ctrlKey && ['U','S','P','C'].includes(e.key))) {
-    e.preventDefault(); return false;
-  }
-}, true);
-
-window.addEventListener('contextmenu', e => e.preventDefault(), false);
-['copy','cut','dragstart'].forEach(ev => window.addEventListener(ev, e => e.preventDefault(), false));
-
-document.querySelectorAll('img').forEach(img => {
-  img.setAttribute('draggable', 'false');
-  img.addEventListener('contextmenu', e => e.preventDefault());
-  img.addEventListener('dragstart', e => e.preventDefault());
+window.addEventListener('beforeunload', ()=>{ 
+  const prev = parseInt(localStorage.getItem('bubbleao_play_seconds')||'0',10) || 0; 
+  const delta = Math.floor((Date.now() - (player.sessionStart||Date.now()))/1000); 
+  localStorage.setItem('bubbleao_play_seconds', prev + delta); 
+  persist(); 
+  socket.emit('disconnectPlayer');
 });
 
-/* Inicialización */
+window.__GAME = { player, players, bots, miniBots, foods, persist };
+
+/* =========
+   Datos iniciales de servidores (now fetched from server)
+   ========= */
+let servers = [];
+let favorites = JSON.parse(localStorage.getItem('favorites_v1')) || [];
+
+/* ====== Referencias DOM ====== */
+const serverMenu = document.getElementById('serverMenu');
+const globalPlayersEl = document.getElementById('globalPlayers');
+const serverListEl = document.getElementById('serverList');
+const searchInput = document.getElementById('searchInput');
+const servModal = document.getElementById('modal');
+const modalTitle = document.getElementById('modalTitle');
+const modalTags = document.getElementById('modalTags');
+const modalDesc = document.getElementById('modalDesc');
+const modalMap = document.getElementById('modalMap');
+const modalClose = document.getElementById('modalClose');
+const joinBtn = document.getElementById('joinBtn');
+const btnAll = document.getElementById('btnAll');
+const btnFav = document.getElementById('btnFav');
+const btnSearch = document.getElementById('btn-search');
+const btnUpdate = document.getElementById('btn-update');
+
+let viewMode = 'all'; // or 'favorites'
+
+/* ===== Helpers ===== */
+function saveState(){
+  localStorage.setItem('favorites_v1', JSON.stringify(favorites));
+}
+
+function isFavorite(id){
+  return favorites.indexOf(id) !== -1;
+}
+
+function toggleFavorite(id){
+  const idx = favorites.indexOf(id);
+  if(idx === -1) favorites.push(id);
+  else favorites.splice(idx,1);
+  saveState();
+  renderList();
+}
+
+/* ------------------------- Contador global ------------------------- */
+function updateGlobalPlayers() {
+  const total = servers.reduce((sum, s) => sum + (s.playersCur || 0), 0);
+  globalPlayersEl.textContent = `${total.toLocaleString()} jugadores`;
+}
+
+
+/* ===== Renderizado ===== */
+function createTagEl(txt){
+  const span = document.createElement('span');
+  span.className = 'tag ' + (txt.toLowerCase().includes('pve')? 'pve' : (txt.toLowerCase().includes('prem')? 'prem' : 'pvp'));
+  span.textContent = txt;
+  return span;
+}
+
+function renderList(){
+  const search = (searchInput.value || '').trim().toLowerCase();
+  const filterChecks = Array.from(document.querySelectorAll('.filters input[type=checkbox]')).filter(i=>i.checked).map(i=>i.getAttribute('data-filter'));
+  serverListEl.innerHTML = '';
+
+  const listToRender = servers.filter(s=>{
+    if(viewMode === 'favorites' && !isFavorite(s.id)) return false;
+    if(search && !s.name.toLowerCase().includes(search)) return false;
+    if(filterChecks.length){
+      for(const f of filterChecks){
+        if(!s.flags[f]) return false;
+      }
+    }
+    return true;
+  });
+
+  if(listToRender.length === 0){
+    const empty = document.createElement('div');
+    empty.style.padding='24px';
+    empty.style.color='var(--muted)';
+    empty.textContent = 'No hay servidores que coincidan con los filtros/búsqueda.';
+    serverListEl.appendChild(empty);
+    return;
+  }
+
+  listToRender.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'server-row';
+    row.setAttribute('data-id', s.id);
+
+    const fav = document.createElement('div');
+    fav.className = 'fav' + (isFavorite(s.id)? ' active' : '');
+    fav.innerHTML = isFavorite(s.id) ? '<i class="fa-solid fa-star"></i>' : '<i class="fa-regular fa-star"></i>';
+    fav.title = 'Agregar/Remover favorito';
+    fav.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      toggleFavorite(s.id);
+    });
+    row.appendChild(fav);
+
+    const info = document.createElement('div');
+    info.className = 'server-info';
+    const name = document.createElement('div'); name.className = 'name'; name.textContent = s.name;
+    const meta = document.createElement('div'); meta.className = 'meta';
+    s.tags.forEach(t => meta.appendChild(createTagEl(t)));
+    const created = document.createElement('div'); created.style.fontSize='12px'; created.style.color='var(--muted)'; created.textContent = 'Creado: hace 1 días';
+    meta.appendChild(created);
+    info.appendChild(name); info.appendChild(meta);
+    row.appendChild(info);
+
+    const mapcol = document.createElement('div'); mapcol.className='mapcol'; mapcol.textContent = s.map;
+    row.appendChild(mapcol);
+
+    const statecol = document.createElement('div'); statecol.className='statecol';
+    const stateBtn = document.createElement('button');
+    stateBtn.className = 'icon-btn';
+    stateBtn.style.padding = '8px';
+    stateBtn.style.border = 'none';
+    stateBtn.style.background = 'transparent';
+    stateBtn.style.color = 'var(--muted)';
+    stateBtn.style.cursor = 'pointer';
+    if(s.state === 'online'){
+      stateBtn.innerHTML = '<i class="fa-solid fa-check" style="color:var(--green)"></i>';
+    } else if(s.state === 'downloading'){
+      stateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    } else {
+      stateBtn.innerHTML = '<i class="fa-solid fa-download"></i>';
+    }
+    stateBtn.title = 'Descargar/Actualizar';
+    statecol.appendChild(stateBtn);
+    row.appendChild(statecol);
+
+    const playerscol = document.createElement('div'); playerscol.className='playerscol';
+    const playersText = document.createElement('div'); playersText.textContent = `${s.playersCur}/${s.playersMax}`;
+    const pc = document.createElement('div'); pc.className='player-controls';
+    const plus = document.createElement('button'); plus.innerHTML = '<i class="fa-solid fa-plus"></i>';
+    const minus = document.createElement('button'); minus.innerHTML = '<i class="fa-solid fa-minus"></i>';
+    [plus,minus].forEach(b=>{
+      b.style.background='transparent';
+      b.style.border='none';
+      b.style.color='var(--muted)';
+      b.style.cursor='pointer';
+      b.style.fontSize='13px';
+    });
+    plus.title='Añadir jugador (simular entrada)';
+    minus.title='Quitar jugador (simular salida)';
+    plus.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      if(s.playersCur < s.playersMax) s.playersCur++;
+      playersText.textContent = `${s.playersCur}/${s.playersMax}`;
+      saveState();
+    });
+    minus.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      if(s.playersCur > 0) s.playersCur--;
+      playersText.textContent = `${s.playersCur}/${s.playersMax}`;
+      saveState();
+    });
+    pc.appendChild(minus); pc.appendChild(plus);
+    playerscol.appendChild(playersText);
+    playerscol.appendChild(pc);
+    row.appendChild(playerscol);
+
+    const pingcol = document.createElement('div'); pingcol.className='pingcol';
+    const pingBtn = document.createElement('div');
+    pingBtn.style.cursor='pointer';
+    pingBtn.title = 'Haz click para variar el ping';
+    pingBtn.textContent = s.ping + ' ms';
+    pingBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      s.ping = Math.max(10, Math.round(s.ping + (Math.random()*160-80)));
+      pingBtn.textContent = s.ping + ' ms';
+      saveState();
+    });
+    pingcol.appendChild(pingBtn);
+    row.appendChild(pingcol);
+
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'progress-wrap';
+    progressWrap.style.display='none';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'progress-bar';
+    progressWrap.appendChild(progressBar);
+    row.appendChild(progressWrap);
+
+    stateBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if(s.state === 'downloading') return;
+      s.state = 'downloading';
+      stateBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      progressWrap.style.display = 'block';
+      progressBar.style.width = '0%';
+      let prog = 0;
+      const id = setInterval(()=> {
+        prog += Math.random()*18 + 6;
+        if(prog >= 100){
+          prog = 100;
+          clearInterval(id);
+          s.state = 'online';
+          stateBtn.innerHTML = '<i class="fa-solid fa-check" style="color:var(--green)"></i>';
+          progressBar.style.width = '100%';
+          setTimeout(()=> {
+            progressWrap.style.display='none';
+            progressBar.style.width='0%';
+          }, 800);
+          saveState();
+        } else {
+          progressBar.style.width = prog.toFixed(0) + '%';
+        }
+      }, 300);
+    });
+
+    row.addEventListener('click', ()=>{
+      openModalForServer(s);
+    });
+
+    serverListEl.appendChild(row);
+  });
+}
+
+/* ===== Modal logic ===== */
+let currentModalServer = null;
+function openModalForServer(s){
+  currentModalServer = s;
+  modalTitle.textContent = s.name;
+  modalTags.innerHTML = '';
+  s.tags.forEach(t => {
+    const tg = createTagEl(t);
+    tg.style.marginRight = '6px';
+    modalTags.appendChild(tg);
+  });
+  modalDesc.innerHTML = `
+    <strong>Este es un servidor</strong>.<br><br>
+    <strong>Tipo:</strong> ${s.tags.includes('PVE') ? 'PVE' : 'PVP'}<br>
+    <ul style="margin:6px 0 6px 18px;color:var(--muted)">
+      <li>El daño de skins entre jugadores puede activarse o desactivarse según el servidor.</li>
+      <li>El uso de skins puede estar permitido o restringido.</li>
+      <li>No hay límite de tiempo para las skins, depende del administrador.</li>
+      <li>Límite de skins equipadas: 3 por jugador (ejemplo).</li>
+    </ul>
+  `;
+  modalMap.textContent = `${s.map} - ${s.playersCur}/${s.playersMax}`;
+
+  servModal.style.display = 'flex';
+  servModal.setAttribute('aria-hidden','false');
+}
+
+modalClose.addEventListener('click', ()=> {
+  servModal.style.display = 'none';
+  servModal.setAttribute('aria-hidden','true');
+});
+
+servModal.addEventListener('click', (e)=>{
+  if(e.target === servModal) { servModal.style.display='none'; servModal.setAttribute('aria-hidden','true'); }
+});
+
+joinBtn.addEventListener('click', ()=>{
+  if(!currentModalServer) return;
+  joinBtn.textContent = 'Conectando...';
+  joinBtn.disabled = true;
+  setTimeout(()=>{
+    joinBtn.textContent = '¡Conectado!';
+    setTimeout(()=> {
+      joinBtn.textContent = 'ÚNETE AL SERVIDOR';
+      joinBtn.disabled = false;
+      servModal.style.display = 'none';
+      startGameFromServer(currentModalServer.id);
+    }, 1000);
+  }, 1200);
+});
+
+/* ===== Filters, search, view toggles ===== */
+document.querySelectorAll('.filters input[type=checkbox]').forEach(ch => {
+  ch.addEventListener('change', renderList);
+});
+searchInput.addEventListener('input', renderList);
+
+btnAll.addEventListener('click', ()=>{
+  viewMode = 'all';
+  btnAll.style.background = 'rgba(255,255,255,0.03)';
+  btnFav.style.background = '';
+  renderList();
+});
+btnFav.addEventListener('click', ()=>{
+  viewMode = 'favorites';
+  btnFav.style.background = 'rgba(255,255,255,0.03)';
+  btnAll.style.background = '';
+  renderList();
+});
+
+btnSearch.addEventListener('click', ()=> searchInput.focus());
+
+btnUpdate.addEventListener('click', ()=> {
+  socket.emit('getServers');
+});
+
+function mostrarAdvertencia(mensaje) {
+  // Crear overlay
+  const overlay = document.createElement("div");
+  overlay.className = "oxide-overlay";
+
+  // Crear diálogo
+  const dialog = document.createElement("div");
+  dialog.className = "oxide-dialog";
+
+  // Estructura del contenido
+  dialog.innerHTML = `
+    <div class="oxide-header">ERROR</div>
+    <div class="oxide-body">${mensaje}</div>
+    <div class="oxide-footer">
+      <button class="oxide-ok">OK</button>
+    </div>
+  `;
+
+  // Agregar al body
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+
+  // Botón OK cierra el modal
+  dialog.querySelector(".oxide-ok").onclick = () => {
+  	// Oculta la tienda
+  shopOverlay.style.display = 'none';
+
+  // Oculta HUD, controles, leaderboard, chat, etc.
+  canvas.style.display = 'none';
+  topLeftControls.style.display = 'none';
+  hud.style.display = 'none';
+  leaderboard.style.display = 'none';
+  chatContainer.style.display = 'none';
+
+  const startMenu = document.getElementById('serverMenu');
+  if (startMenu) startMenu.style.display = 'grid'; // visible otra vez
+
+  try {
+    if (state.settings.gameMusic && state.settings.musicUnlocked) {
+      gameMusic.pause();
+      gameMusic.currentTime = 0;
+    }
+  } catch (e) {}
+    overlay.remove();
+  };
+
+  // También cerrar al presionar Escape
+  document.addEventListener("keydown", function esc(e) {
+    if (e.key === "Escape") {
+      overlay.remove();
+      document.removeEventListener("keydown", esc);
+    }
+  });
+}
+
+/* ===== Persistencia & Inicialización ===== */
 saveState();
 renderList();
 updateGlobalPlayers();
+</script>
 
-window.__GAME = { player, players, bots, miniBots, foods, persist };
+<!-- Bloqueo general de acciones -->
+<script>
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'F12') { e.preventDefault(); return false; } // F12
+    if(e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) { e.preventDefault(); return false; } // Ctrl+Shift+I/J
+    if(e.ctrlKey && (e.key === 'U' || e.key === 'S' || e.key === 'P')) { e.preventDefault(); return false; } // Ctrl+U/S/P
+    if(e.ctrlKey && e.key === 'C') { e.preventDefault(); return false; } // Ctrl+C
+  }, true);
+
+  window.addEventListener('contextmenu', function(e){ e.preventDefault(); }, false);
+
+  window.addEventListener('copy', function(e){ e.preventDefault(); }, false);
+  window.addEventListener('cut', function(e){ e.preventDefault(); }, false);
+  window.addEventListener('dragstart', function(e){ e.preventDefault(); }, false);
+
+  document.querySelectorAll('img').forEach(function(img){
+    img.setAttribute('draggable','false');
+    img.addEventListener('contextmenu', function(ev){ ev.preventDefault(); }, false);
+    img.addEventLi.stener('dragstart', function(ev){ ev.preventDefault(); }, false);
+  });
 </script>
 </body>
 </html>
