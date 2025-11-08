@@ -1,297 +1,194 @@
-// server.js
-// Node + Express + Socket.io basic authoritative server for the bubble game.
-// Guarda este archivo como server.js y ejecuta: npm install && node server.js
-
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { pingTimeout: 60000 });
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
-// Serve static client (index.html + assets)
-app.use(express.static(__dirname));
-
+// Configuración
 const PORT = process.env.PORT || 3000;
+const MAP_SIZE = 14142;
+const TICK_RATE = 40;
 
-// --- World / server setup ---
-const WORLD = { width: 4000, height: 4000 };
-const TICK_MS = 100; // 10 ticks / s
-const FOOD_TARGET_PER_SERVER = 300; // ajusta según performance
+// Estado del juego
+let players = {};
+let pellets = [];
+let bots = [];
 
-// Example servers (puedes añadir más/leer de DB)
-let servers = [
-  { id: 1, name: 'EU #1', map: 'Procedural', playersCur: 0, playersMax: 200, tags: ['PVE'], flags: { MENSUAL: true } },
-  { id: 2, name: 'US #1', map: 'Procedural', playersCur: 0, playersMax: 200, tags: ['PVP'], flags: { MENSUAL: true } }
-];
-
-// Each server state holds authoritative entities
-const serverStates = {}; // serverId -> { players: {}, foods: {}, bots: {} }
-
-function createEmptyServerState(serverId) {
-  return {
-    players: {},   // socketId -> playerObject
-    foods: {},     // foodId -> {id,x,y,radius,color}
-    bots: {},      // optional
-    lastFoodId: 0
-  };
-}
-for (const s of servers) serverStates[s.id] = createEmptyServerState(s.id);
-
-// helpers
-function randBetween(a,b){ return a + Math.random()*(b-a); }
-function makeFood(state) {
-  const id = `f${++state.lastFoodId}`;
-  return {
-    id,
-    x: Math.floor(randBetween(0, WORLD.width)),
-    y: Math.floor(randBetween(0, WORLD.height)),
-    radius: 8 + Math.random()*6,
-    color: `hsl(${Math.floor(Math.random()*360)},70%,50%)`
-  };
-}
-function distance(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
-function wrapPos(e){
-  if(e.x < 0) e.x += WORLD.width;
-  if(e.x > WORLD.width) e.x -= WORLD.width;
-  if(e.y < 0) e.y += WORLD.height;
-  if(e.y > WORLD.height) e.y -= WORLD.height;
+// Color aleatorio
+const COLORS = ['#FF5733', '#33FF57', '#3357FF', '#F333FF', '#FF33A1', '#33FFF5', '#FFD700', '#FF4500'];
+function randomColor() {
+  return COLORS[Math.floor(Math.random() * COLORS.length)];
 }
 
-// Initialize foods for each server
-for (const sid in serverStates){
-  const st = serverStates[sid];
-  while(Object.keys(st.foods).length < FOOD_TARGET_PER_SERVER){
-    const f = makeFood(st);
-    st.foods[f.id] = f;
+// Generar pellets
+function spawnPellets(count = 1000) {
+  for (let i = 0; i < count; i++) {
+    pellets.push({
+      x: Math.random() * MAP_SIZE,
+      y: Math.random() * MAP_SIZE,
+      mass: 10,
+      color: '#00FF00'
+    });
   }
 }
 
-// --- Socket.io events ---
+// Bots simples
+function spawnBots(count = 10) {
+  for (let i = 0; i < count; i++) {
+    bots.push({
+      id: `bot_${i}`,
+      x: Math.random() * MAP_SIZE,
+      y: Math.random() * MAP_SIZE,
+      mass: Math.floor(Math.random() * 50) + 30,
+      name: `Bot${i + 1}`,
+      color: randomColor()
+    });
+  }
+}
+
+// Colisiones
+function checkCollisions(player) {
+  // Pellets
+  for (let i = pellets.length - 1; i >= 0; i--) {
+    const p = pellets[i];
+    const dist = Math.hypot(player.x - p.x, player.y - p.y);
+    if (dist < Math.sqrt(player.mass) + 5) {
+      player.mass += 1;
+      pellets.splice(i, 1);
+      pellets.push({
+        x: Math.random() * MAP_SIZE,
+        y: Math.random() * MAP_SIZE,
+        mass: 10,
+        color: '#00FF00'
+      });
+    }
+  }
+
+  // Jugadores
+  for (const id in players) {
+    if (id === player.id) continue;
+    const other = players[id];
+    const dist = Math.hypot(player.x - other.x, player.y - other.y);
+    const minDist = Math.sqrt(player.mass) + Math.sqrt(other.mass);
+
+    if (dist < minDist) {
+      if (player.mass > other.mass * 1.15) {
+        player.mass += Math.floor(other.mass * 0.5);
+        other.mass = Math.max(64, other.mass * 0.5);
+        if (other.mass < 64) {
+          other.mass = 64;
+          other.x = Math.random() * MAP_SIZE;
+          other.y = Math.random() * MAP_SIZE;
+        }
+      }
+    }
+  }
+
+  // Bots
+  bots.forEach(bot => {
+    const dist = Math.hypot(player.x - bot.x, player.y - bot.y);
+    if (dist < Math.sqrt(player.mass) + Math.sqrt(bot.mass)) {
+      if (player.mass > bot.mass * 1.15) {
+        player.mass += bot.mass;
+        bot.mass = 64;
+        bot.x = Math.random() * MAP_SIZE;
+        bot.y = Math.random() * MAP_SIZE;
+      }
+    }
+  });
+}
+
+// Leaderboard
+function getLeaderboard() {
+  const all = Object.values(players).map(p => ({ name: p.name, mass: p.mass }));
+  all.push(...bots.map(b => ({ name: b.name, mass: b.mass })));
+  return all.sort((a, b) => b.mass - a.mass).slice(0, 10);
+}
+
+// Game Loop
+setInterval(() => {
+  // Mover bots
+  bots.forEach(bot => {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 1 + (100 / bot.mass);
+    bot.x += Math.cos(angle) * speed;
+    bot.y += Math.sin(angle) * speed;
+    bot.x = Math.max(50, Math.min(MAP_SIZE - 50, bot.x));
+    bot.y = Math.max(50, Math.min(MAP_SIZE - 50, bot.y));
+  });
+
+  // Colisiones
+  Object.values(players).forEach(checkCollisions);
+
+  // Emitir estado
+  io.emit('gameState', {
+    players,
+    pellets,
+    bots,
+    leaderboard: getLeaderboard()
+  });
+}, 1000 / TICK_RATE);
+
+// Socket.IO
 io.on('connection', (socket) => {
-  console.log('client connected', socket.id);
+  console.log('Jugador conectado:', socket.id);
 
-  // Client asks for servers list
-  socket.on('getServers', () => {
-    // update playersCur from state
-    const sList = servers.map(s => {
-      const st = serverStates[s.id];
-      return { ...s, playersCur: Object.keys(st.players).length };
-    });
-    socket.emit('servers', sList);
-  });
-
-  // Player joins a specific game server/room
-  socket.on('joinServer', ({ serverId, playerData }) => {
-    const sid = Number(serverId);
-    const state = serverStates[sid];
-    if(!state) {
-      socket.emit('error', 'Server not found');
-      return;
-    }
-
-    socket.join(`server:${sid}`);
-    // create player server-side
-    const spawnX = Math.floor(randBetween(0, WORLD.width));
-    const spawnY = Math.floor(randBetween(0, WORLD.height));
-    const player = {
+  socket.on('join', (name) => {
+    const playerName = (name || 'Anónimo').substring(0, 15);
+    players[socket.id] = {
       id: socket.id,
-      name: (playerData && playerData.name) ? playerData.name : `Guest-${socket.id.slice(0,4)}`,
-      x: spawnX,
-      y: spawnY,
-      radius: (playerData && playerData.radius) || 30,
-      speed: (playerData && playerData.speed) || 2.4,
-      color: (playerData && playerData.color) || '#ccc',
-      points: (playerData && playerData.points) || 0,
-      moveDir: { x: 0, y: 0 },
-      purchases: (playerData && playerData.purchases) || {}
+      x: Math.random() * MAP_SIZE,
+      y: Math.random() * MAP_SIZE,
+      mass: 64,
+      name: playerName,
+      color: randomColor()
     };
-    state.players[socket.id] = player;
-
-    // notify counts to everyone
-    emitPlayerCounts();
-
-    // Send initial full state to the new socket
-    socket.emit('state', {
-      players: state.players,
-      bots: state.bots,
-      miniBots: {}, // if used
-      foods: state.foods
-    });
-
-    // Also notify the whole room (including new player) so they see new player
-    io.to(`server:${sid}`).emit('state', {
-      players: state.players,
-      bots: state.bots,
-      miniBots: {},
-      foods: state.foods
-    });
-
-    console.log(`socket ${socket.id} joined server ${sid}`);
+    socket.emit('init', { id: socket.id, mapSize: MAP_SIZE });
   });
 
-  // Move direction from client (normalized direction vector)
-  socket.on('move', (dir) => {
-    // find which server room this socket is in
-    const rooms = Array.from(socket.rooms).filter(r => r.startsWith('server:'));
-    if(rooms.length === 0) return;
-    const sid = Number(rooms[0].split(':')[1]);
-    const st = serverStates[sid];
-    if(!st || !st.players[socket.id]) return;
-    const p = st.players[socket.id];
-    // clamp dir
-    p.moveDir = { x: Number(dir.x) || 0, y: Number(dir.y) || 0 };
+  socket.on('move', (mouseX, mouseY) => {
+    const player = players[socket.id];
+    if (!player) return;
+
+    const dx = mouseX - player.x;
+    const dy = mouseY - player.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist === 0) return;
+
+    const speed = Math.min(6 + (100 / player.mass), 12);
+    player.x += (dx / dist) * speed;
+    player.y += (dy / dist) * speed;
+
+    player.x = Math.max(50, Math.min(MAP_SIZE - 50, player.x));
+    player.y = Math.max(50, Math.min(MAP_SIZE - 50, player.y));
   });
 
-  // Chat: broadcast to room
-  socket.on('chat', (text) => {
-    const rooms = Array.from(socket.rooms).filter(r => r.startsWith('server:'));
-    if(rooms.length === 0) return;
-    const sid = Number(rooms[0].split(':')[1]);
-    io.to(`server:${sid}`).emit('chat', { sender: socket.id, text });
-  });
-
-  // UpdatePlayer: client requested Avatar/skin/points update, apply to server copy
-  socket.on('updatePlayer', (data) => {
-    const rooms = Array.from(socket.rooms).filter(r => r.startsWith('server:'));
-    if(rooms.length === 0) return;
-    const sid = Number(rooms[0].split(':')[1]);
-    const st = serverStates[sid];
-    if(!st || !st.players[socket.id]) return;
-    const p = st.players[socket.id];
-    // copy allowed fields
-    if(typeof data.color === 'string') p.color = data.color;
-    if(typeof data.radius === 'number') p.radius = data.radius;
-    if(typeof data.points === 'number') p.points = data.points;
-    if(typeof data.skinImg === 'string') p.skinImg = data.skinImg;
-    if(typeof data.flag === 'string') p.flag = data.flag;
-    if(data.purchases) p.purchases = data.purchases;
-    // broadcast updated player to room
-    io.to(`server:${sid}`).emit('state', {
-      players: st.players,
-      bots: st.bots,
-      miniBots: {},
-      foods: st.foods
-    });
-  });
-
-  // Disconnect handling
   socket.on('disconnect', () => {
-    // remove from any server
-    for(const sid in serverStates){
-      const st = serverStates[sid];
-      if(st.players[socket.id]){
-        delete st.players[socket.id];
-        io.to(`server:${sid}`).emit('state', {
-          players: st.players,
-          bots: st.bots,
-          miniBots: {},
-          foods: st.foods
-        });
-      }
-    }
-    emitPlayerCounts();
-    console.log('client disconnected', socket.id);
-  });
-
-  // explicit client disconnect event (from your client 'disconnectPlayer')
-  socket.on('disconnectPlayer', () => {
-    for(const sid in serverStates){
-      const st = serverStates[sid];
-      if(st.players[socket.id]){
-        delete st.players[socket.id];
-        io.to(`server:${sid}`).emit('state', {
-          players: st.players,
-          bots: st.bots,
-          miniBots: {},
-          foods: st.foods
-        });
-      }
-    }
-    emitPlayerCounts();
+    delete players[socket.id];
+    console.log('Jugador desconectado:', socket.id);
   });
 });
 
-// helper: send players count summary
-function emitPlayerCounts(){
-  const counts = {};
-  for(const s of servers){
-    counts[s.id] = Object.keys(serverStates[s.id].players).length;
-  }
-  io.emit('playerCountUpdate', counts);
-}
+// Servir archivos estáticos
+app.use(express.static('public'));
 
-// --- Server tick: update positions, collisions, and broadcast to rooms ---
-setInterval(() => {
-  const now = Date.now();
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
-  for (const sid in serverStates) {
-    const st = serverStates[sid];
+// Iniciar
+spawnPellets(1000);
+spawnBots(8);
 
-    // Update player positions from their moveDir
-    for (const pid in st.players) {
-      const p = st.players[pid];
-      if (!p) continue;
-
-      // move using speed and tick interval
-      const vx = (p.moveDir.x || 0) * p.speed * (TICK_MS / 16.67); // approximate compensation
-      const vy = (p.moveDir.y || 0) * p.speed * (TICK_MS / 16.67);
-      p.x += vx;
-      p.y += vy;
-      wrapPos(p);
-    }
-
-    // Collision: players eat foods
-    for (const fid in st.foods) {
-      const f = st.foods[fid];
-      let eatenBy = null;
-      for (const pid in st.players) {
-        const p = st.players[pid];
-        const d = Math.hypot(p.x - f.x, p.y - f.y);
-        if (d < (p.radius + f.radius) * 0.9) { // collision threshold
-          eatenBy = p;
-          break;
-        }
-      }
-      if (eatenBy) {
-        // remove the food
-        delete st.foods[fid];
-        // grow player (simple mass increase)
-        const addRadius = Math.max(1.2, f.radius * 0.35);
-        eatenBy.radius = Math.min(1200, eatenBy.radius + addRadius);
-        eatenBy.points = (eatenBy.points || 0) + Math.floor(addRadius * 2);
-      }
-    }
-
-    // Refill foods to target count gradually
-    const currentFoodCount = Object.keys(st.foods).length;
-    const missing = FOOD_TARGET_PER_SERVER - currentFoodCount;
-    if (missing > 0) {
-      // spawn up to 10 per tick to avoid spikes
-      const spawn = Math.min(missing, 10);
-      for (let i=0;i<spawn;i++){
-        const nf = makeFood(st);
-        st.foods[nf.id] = nf;
-      }
-    }
-
-    // Broadcast updated state to everyone in the room
-    io.to(`server:${sid}`).emit('state', {
-      players: st.players,
-      bots: st.bots,
-      miniBots: {},
-      foods: st.foods
-    });
-  }
-
-  // occasionally broadcast player counts
-  emitPlayerCounts();
-
-}, TICK_MS);
-
-// Start server
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Open http://localhost:${PORT}/index.html`);
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Bubble.ao Online en puerto ${PORT}`);
 });
