@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Verificación por correo</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #0f172a;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .box {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            width: 300px;
+        }
+
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            border-radius: 5px;
+            border: none;
+        }
+
+        button {
+            background: #22c55e;
+            color: black;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #16a34a;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <h3>Verificar correo</h3>
+
+    <input type="email" id="email" placeholder="Tu correo Gmail">
+    <button onclick="enviarCodigo()">Enviar código</button>
+
+    <div id="verificacion" class="hidden">
+        <input type="text" id="codigo" placeholder="Código recibido">
+        <button onclick="verificarCodigo()">Verificar</button>
+    </div>
+</div>
+
+<script>
+    let codigoServidor = "";
+
+    function enviarCodigo() {
+        const email = document.getElementById("email").value;
+
+        fetch("http://localhost:3000/enviar-codigo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email })
+        })
+        .then(res => res.json())
+        .then(data => {
+            codigoServidor = data.codigo;
+            document.getElementById("verificacion").classList.remove("hidden");
+            alert("Código enviado a tu correo");
+        });
+    }
+
+    function verificarCodigo() {
+        const codigo = document.getElementById("codigo").value;
+
+        if (codigo === codigoServidor) {
+            alert(" Correo verificado correctamente");
+        } else {
+            alert(" Código incorrecto");
+        }
+    }
+</script>
+
+</body>
+</html>y
